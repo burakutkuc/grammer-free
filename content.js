@@ -2,6 +2,8 @@
   const DEBOUNCE_MS = 350;
   const CLASS_PREFIX = "grammarfree";
   const MAX_MATCHES_RENDERED = 64; // basic guard
+  const HIGHLIGHT_NAME = "grammarfree-highlight";
+  const supportsHighlightApi = Boolean(globalThis.CSS && CSS.highlights);
 
   let settings = { enabled: true, disabledHosts: [] };
   let enabledForPage = true;
@@ -10,6 +12,7 @@
   let tooltipEl = null;
   let tooltipState = { element: null, match: null };
   let refreshScheduled = false;
+  const highlightRangeStore = new Map(); // element -> Range[]
 
   injectStyles();
   setupTooltip();
@@ -31,6 +34,13 @@
         border: none !important;
         padding: 0 !important;
         margin: 0 !important;
+      }
+      ::highlight(${HIGHLIGHT_NAME}) {
+        text-decoration: underline wavy #ef4444;
+        text-decoration-thickness: 2px;
+        text-decoration-skip-ink: none;
+        background: rgba(254, 202, 202, 0.35);
+        color: inherit;
       }
       .${CLASS_PREFIX}-underline {
         position: fixed;
@@ -328,18 +338,22 @@
 
   function clearHighlights(el, state) {
     if (state.mode === "rich") {
-      const spans = el.querySelectorAll(`span.${CLASS_PREFIX}-inline`);
-      spans.forEach((span) => {
-        const textNode = document.createTextNode(span.textContent || "");
-        span.replaceWith(textNode);
-      });
-      state.inlineSpans = [];
-    } else {
-      for (const node of state.underlineNodes) node.remove();
-      for (const hit of state.hitboxes) hit.remove();
-      state.underlineNodes = [];
-      state.hitboxes = [];
+      if (supportsHighlightApi) {
+        highlightRangeStore.delete(el);
+        rebuildHighlights();
+      } else {
+        const spans = el.querySelectorAll(`span.${CLASS_PREFIX}-inline`);
+        spans.forEach((span) => {
+          const textNode = document.createTextNode(span.textContent || "");
+          span.replaceWith(textNode);
+        });
+        state.inlineSpans = [];
+      }
     }
+    for (const node of state.underlineNodes) node.remove();
+    for (const hit of state.hitboxes) hit.remove();
+    state.underlineNodes = [];
+    state.hitboxes = [];
   }
 
   function renderHighlights(el, text, matches, { force = false } = {}) {
@@ -411,6 +425,40 @@
       .sort((a, b) => a.offset - b.offset);
     if (sorted.length === 0) return;
 
+    if (supportsHighlightApi) {
+      const ranges = buildRangesFromMatches(el, sorted);
+      highlightRangeStore.set(el, ranges);
+      rebuildHighlights();
+
+      const hitboxFragment = document.createDocumentFragment();
+      const hitboxes = [];
+      ranges.forEach((range, idx) => {
+        const match = sorted[idx];
+        if (!match) return;
+        for (const rect of range.getClientRects()) {
+          if (!rect.width || !rect.height) continue;
+          const hit = document.createElement("div");
+          hit.className = `${CLASS_PREFIX}-hitbox`;
+          hit.style.left = `${rect.left}px`;
+          hit.style.top = `${rect.top}px`;
+          hit.style.width = `${Math.max(rect.width, 12)}px`;
+          hit.style.height = `${rect.height}px`;
+          hit.addEventListener("mouseenter", () => showTooltip(match, rect, el));
+          hit.addEventListener("click", (evt) => {
+            evt.stopPropagation();
+            showTooltip(match, rect, el);
+          });
+          hitboxFragment.appendChild(hit);
+          hitboxes.push(hit);
+        }
+      });
+
+      document.documentElement.appendChild(hitboxFragment);
+      state.hitboxes = hitboxes;
+      return;
+    }
+
+    // Fallback: inline spans when CSS Highlight API is unavailable
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
     let node = walker.nextNode();
     let cursor = 0;
@@ -478,6 +526,52 @@
     state.inlineSpans = spans;
   }
 
+  function buildRangesFromMatches(el, matches) {
+    const ranges = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let node = walker.nextNode();
+    let cursor = 0;
+    let idx = 0;
+
+    while (node && idx < matches.length) {
+      const text = node.textContent || "";
+      const nodeStart = cursor;
+      const nodeEnd = nodeStart + text.length;
+      const match = matches[idx];
+      const matchStart = match.offset;
+      const matchEnd = match.offset + match.length;
+
+      if (matchStart >= nodeEnd) {
+        cursor = nodeEnd;
+        node = walker.nextNode();
+        continue;
+      }
+
+      if (matchEnd <= nodeStart) {
+        idx += 1;
+        continue;
+      }
+
+      const start = Math.max(nodeStart, matchStart);
+      const end = Math.min(nodeEnd, matchEnd);
+      if (end > start) {
+        const range = document.createRange();
+        range.setStart(node, start - nodeStart);
+        range.setEnd(node, end - nodeStart);
+        ranges.push(range);
+      }
+
+      if (matchEnd <= nodeEnd) {
+        idx += 1;
+      }
+
+      cursor = nodeEnd;
+      node = walker.nextNode();
+    }
+
+    return ranges;
+  }
+
   function buildSignature(text, matches) {
     const matchPart = (matches || [])
       .slice(0, MAX_MATCHES_RENDERED)
@@ -493,6 +587,20 @@
       hash = (hash * 31 + str.charCodeAt(i)) | 0;
     }
     return hash.toString(16);
+  }
+
+  function rebuildHighlights() {
+    if (!supportsHighlightApi) return;
+    const allRanges = [];
+    for (const ranges of highlightRangeStore.values()) {
+      allRanges.push(...ranges);
+    }
+    if (allRanges.length === 0) {
+      CSS.highlights.delete(HIGHLIGHT_NAME);
+      return;
+    }
+    const highlight = new Highlight(...allRanges);
+    CSS.highlights.set(HIGHLIGHT_NAME, highlight);
   }
 
   function measureMatches(el, text, matches) {
@@ -562,7 +670,7 @@
     if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") {
       return el.value || "";
     }
-    return el.innerText || "";
+    return el.textContent || "";
   }
 
   function setCaret(el, position) {

@@ -69,7 +69,10 @@ async function handleCheckText(text, language = "en-US") {
   const params = new URLSearchParams();
   params.set("text", text);
   params.set("language", language);
-  params.set("level", "default");
+  params.set("level", "picky");
+  params.set("preferredVariants", language);
+  params.set("enablePickyRules", "true");
+  params.set("enabledCategories", "TYPOS,GRAMMAR,STYLE,SEMANTICS,TYPOGRAPHY");
 
   const response = await fetch(API_URL, {
     method: "POST",
