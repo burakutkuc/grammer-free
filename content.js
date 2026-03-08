@@ -392,7 +392,7 @@
 
   function measureMatches(el, text, matches) {
     const sorted = matches
-      .filter((m) => typeof m.offset === "number" && typeof m.length === "number")
+      .filter((m) => Number.isFinite(m.offset) && Number.isFinite(m.length) && m.length > 0)
       .sort((a, b) => a.offset - b.offset);
     if (sorted.length === 0) return [];
 
@@ -420,31 +420,8 @@
     mirror.style.height = "auto";
     mirror.style.minHeight = `${el.clientHeight}px`;
     mirror.style.background = "transparent";
+    mirror.textContent = text;
 
-    const docFragment = document.createDocumentFragment();
-    let cursor = 0;
-    let index = 0;
-    const idMap = new Map();
-
-    for (const match of sorted) {
-      const start = Math.max(0, Math.min(text.length, match.offset));
-      const end = Math.max(start, Math.min(text.length, match.offset + match.length));
-      if (start > cursor) {
-        docFragment.appendChild(document.createTextNode(text.slice(cursor, start)));
-      }
-      const span = document.createElement("span");
-      const id = `match-${index++}`;
-      span.dataset.matchId = id;
-      span.textContent = text.slice(start, end);
-      docFragment.appendChild(span);
-      idMap.set(id, match);
-      cursor = end;
-    }
-    if (cursor < text.length) {
-      docFragment.appendChild(document.createTextNode(text.slice(cursor)));
-    }
-
-    mirror.appendChild(docFragment);
     document.body.appendChild(mirror);
 
     const mirrorRect = mirror.getBoundingClientRect();
@@ -452,17 +429,24 @@
     const scrollTop = el.scrollTop || 0;
     const scrollLeft = el.scrollLeft || 0;
 
+    const textNode = mirror.firstChild;
     const results = [];
-    for (const span of mirror.querySelectorAll("span[data-match-id]")) {
-      const id = span.dataset.matchId;
-      const match = idMap.get(id);
-      const rects = Array.from(span.getClientRects()).map((r) => ({
+    let index = 0;
+
+    for (const match of sorted) {
+      const start = Math.max(0, Math.min(text.length, match.offset));
+      const end = Math.max(start, Math.min(text.length, match.offset + match.length));
+      const range = document.createRange();
+      range.setStart(textNode, start);
+      range.setEnd(textNode, end);
+      const rects = Array.from(range.getClientRects()).map((r) => ({
         left: targetRect.left + (r.left - mirrorRect.left) - scrollLeft,
         top: targetRect.top + (r.top - mirrorRect.top) - scrollTop,
         width: r.width,
         height: r.height
       }));
-      results.push({ id, match, rects });
+      results.push({ id: `match-${index++}`, match, rects });
+      range.detach();
     }
 
     mirror.remove();

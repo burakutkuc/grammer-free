@@ -18,7 +18,12 @@
   },
   "action": {
     "default_title": "GrammarFree",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "docs/icon/icon-16.png",
+      "48": "docs/icon/icon-48.png",
+      "128": "docs/icon/icon-128.png"
+    }
   },
   "content_scripts": [
     {
@@ -34,5 +39,10 @@
   "options_ui": {
     "page": "popup.html",
     "open_in_tab": false
+  },
+  "icons": {
+    "16": "docs/icon/icon-16.png",
+    "48": "docs/icon/icon-48.png",
+    "128": "docs/icon/icon-128.png"
   }
 }
