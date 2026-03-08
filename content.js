@@ -20,6 +20,18 @@
     const style = document.createElement("style");
     style.setAttribute("data-grammarfree", "true");
     style.textContent = `
+      .${CLASS_PREFIX}-inline {
+        display: inline !important;
+        text-decoration: underline wavy #ef4444;
+        text-decoration-thickness: 2px;
+        text-decoration-skip-ink: none;
+        background: rgba(254, 202, 202, 0.35);
+        color: inherit !important;
+        font: inherit !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
       .${CLASS_PREFIX}-underline {
         position: fixed;
         pointer-events: none;
@@ -204,12 +216,12 @@
 
   function primeElementState(el) {
     if (stateByElement.has(el)) return;
-    const cleanup = () => {
-      const state = stateByElement.get(el);
-      if (!state) return;
-      clearHighlights(state);
-      stateByElement.delete(el);
-    };
+      const cleanup = () => {
+        const state = stateByElement.get(el);
+        if (!state) return;
+        clearHighlights(el, state);
+        stateByElement.delete(el);
+      };
     el.addEventListener("blur", cleanup, { once: true });
     el.addEventListener(
       "scroll",
@@ -225,8 +237,13 @@
       lastText: "",
       lastMatches: [],
       lastSignature: null,
+      mode:
+        el.isContentEditable && el.tagName !== "TEXTAREA" && el.tagName !== "INPUT"
+          ? "rich"
+          : "form",
       underlineNodes: [],
-      hitboxes: []
+      hitboxes: [],
+      inlineSpans: []
     });
   }
 
@@ -248,7 +265,7 @@
     const state = stateByElement.get(el);
     if (!state) return;
     if (!enabledForPage) {
-      clearHighlights(state);
+      clearHighlights(el, state);
       return;
     }
 
@@ -260,7 +277,7 @@
     state.lastText = text;
 
     if (!text || !text.trim()) {
-      clearHighlights(state);
+      clearHighlights(el, state);
       state.lastMatches = [];
       return;
     }
@@ -277,11 +294,11 @@
         renderHighlights(el, text, state.lastMatches, { force: true });
       } else if (response && response.error) {
         console.warn("[GrammarFree] check error", response.error);
-        clearHighlights(state);
+        clearHighlights(el, state);
       }
     } catch (err) {
       console.warn("[GrammarFree] failed to reach LanguageTool", err);
-      clearHighlights(state);
+      clearHighlights(el, state);
     }
   }
 
@@ -292,7 +309,7 @@
       refreshScheduled = false;
       for (const [el, state] of stateByElement.entries()) {
         if (!document.contains(el)) {
-          clearHighlights(state);
+          clearHighlights(el, state);
           stateByElement.delete(el);
           continue;
         }
@@ -302,18 +319,27 @@
   }
 
   function clearAll() {
-    for (const state of stateByElement.values()) {
-      clearHighlights(state);
+    for (const [el, state] of stateByElement.entries()) {
+      clearHighlights(el, state);
     }
     stateByElement.clear();
     hideTooltip();
   }
 
-  function clearHighlights(state) {
-    for (const node of state.underlineNodes) node.remove();
-    for (const hit of state.hitboxes) hit.remove();
-    state.underlineNodes = [];
-    state.hitboxes = [];
+  function clearHighlights(el, state) {
+    if (state.mode === "rich") {
+      const spans = el.querySelectorAll(`span.${CLASS_PREFIX}-inline`);
+      spans.forEach((span) => {
+        const textNode = document.createTextNode(span.textContent || "");
+        span.replaceWith(textNode);
+      });
+      state.inlineSpans = [];
+    } else {
+      for (const node of state.underlineNodes) node.remove();
+      for (const hit of state.hitboxes) hit.remove();
+      state.underlineNodes = [];
+      state.hitboxes = [];
+    }
   }
 
   function renderHighlights(el, text, matches, { force = false } = {}) {
@@ -324,11 +350,16 @@
     if (!force && state.lastSignature === signature) return;
     state.lastSignature = signature;
 
-    clearHighlights(state);
+    clearHighlights(el, state);
     hideTooltip();
 
     if (!matches || matches.length === 0) return;
     if (!document.contains(el)) return;
+
+    if (state.mode === "rich") {
+      renderInlineHighlights(el, matches, state);
+      return;
+    }
 
     const measurements = measureMatches(el, text, matches);
     const underlineNodes = [];
@@ -371,6 +402,80 @@
 
     state.underlineNodes = underlineNodes;
     state.hitboxes = hitboxes;
+  }
+
+  function renderInlineHighlights(el, matches, state) {
+    if (!matches || matches.length === 0) return;
+    const sorted = matches
+      .filter((m) => Number.isFinite(m.offset) && Number.isFinite(m.length) && m.length > 0)
+      .sort((a, b) => a.offset - b.offset);
+    if (sorted.length === 0) return;
+
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+    let node = walker.nextNode();
+    let cursor = 0;
+    let matchIndex = 0;
+    const spans = [];
+
+    while (node && matchIndex < sorted.length) {
+      const textContent = node.textContent || "";
+      const nodeStart = cursor;
+      const nodeEnd = cursor + textContent.length;
+
+      const overlapping = [];
+      while (
+        matchIndex < sorted.length &&
+        sorted[matchIndex].offset < nodeEnd &&
+        sorted[matchIndex].offset + sorted[matchIndex].length > nodeStart
+      ) {
+        overlapping.push(sorted[matchIndex]);
+        const matchEnd = sorted[matchIndex].offset + sorted[matchIndex].length;
+        if (matchEnd <= nodeEnd) {
+          matchIndex += 1;
+        } else {
+          break;
+        }
+      }
+
+      if (overlapping.length > 0) {
+        const frag = document.createDocumentFragment();
+        let localPos = 0;
+        for (const match of overlapping) {
+          const start = Math.max(nodeStart, match.offset);
+          const end = Math.min(nodeEnd, match.offset + match.length);
+          const relStart = start - nodeStart;
+          const relEnd = end - nodeStart;
+          if (relStart > localPos) {
+            frag.appendChild(document.createTextNode(textContent.slice(localPos, relStart)));
+          }
+          const span = document.createElement("span");
+          span.className = `${CLASS_PREFIX}-inline`;
+          span.textContent = textContent.slice(relStart, relEnd);
+          span.dataset.matchOffset = String(match.offset);
+          span.addEventListener("mouseenter", () => {
+            const rect = span.getBoundingClientRect();
+            showTooltip(match, rect, el);
+          });
+          span.addEventListener("click", (evt) => {
+            evt.stopPropagation();
+            const rect = span.getBoundingClientRect();
+            showTooltip(match, rect, el);
+          });
+          frag.appendChild(span);
+          spans.push(span);
+          localPos = relEnd;
+        }
+        if (localPos < textContent.length) {
+          frag.appendChild(document.createTextNode(textContent.slice(localPos)));
+        }
+        node.replaceWith(frag);
+      }
+
+      cursor = nodeEnd;
+      node = walker.nextNode();
+    }
+
+    state.inlineSpans = spans;
   }
 
   function buildSignature(text, matches) {
