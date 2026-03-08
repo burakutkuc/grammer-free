@@ -71,7 +71,11 @@ async function handleCheckText(text, language = "en-US") {
   params.set("language", language);
   params.set("level", "picky");
   params.set("enablePickyRules", "true");
-  params.set("enabledCategories", "TYPOS,GRAMMAR,STYLE,SEMANTICS,TYPOGRAPHY");
+  params.set(
+    "enabledCategories",
+    "TYPOS,GRAMMAR,STYLE,REDUNDANCY,SEMANTICS,TYPOGRAPHY,PHRASING"
+  );
+  params.set("enabledOnly", "false");
 
   const response = await fetch(API_URL, {
     method: "POST",
