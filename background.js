@@ -1,6 +1,7 @@
-const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
-const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"; // TODO: paste your key here
+// Built-in Chrome AI (Gemini Nano via Prompt API)
+let localModelSession = null;
+const SYSTEM_PROMPT =
+  "You are an expert technical English copyeditor for a software engineer. Fix grammar, awkward phrasing, redundancy, and ensure natural, professional English flow. You must calculate exact character offsets for the text that needs changing. Return ONLY valid JSON with matches array.";
 const DEFAULT_SETTINGS = {
   enabled: true,
   disabledHosts: []
@@ -68,12 +69,7 @@ async function handleSetGlobalEnabled(enabled) {
 }
 
 async function handleCheckText(text, language = "en-US") {
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
-    throw new Error("Gemini API key missing. Set GEMINI_API_KEY in background.js");
-  }
-
-  const systemPrompt =
-    "You are an expert technical English copyeditor for a software engineer. Fix grammar, typos, awkward phrasing, redundancy, and ensure natural, professional English flow. You must calculate exact character offsets for the text that needs changing. Return ONLY valid JSON with matches array.";
+  const session = await getLocalModelSession();
 
   const userPrompt = [
     "Return ONLY JSON exactly in this shape:",
@@ -81,56 +77,49 @@ async function handleCheckText(text, language = "en-US") {
     "Rules:",
     "- offsets are zero-based within the provided text.",
     "- length is the exact span to replace.",
-    "- message is a concise explanation.",
+    "- message is a concise explanation of the issue.",
     "- replacements[0].value is the suggested fix.",
     "Text to analyze:",
     text
   ].join("\n");
 
-  const body = {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: `SYSTEM:\n${systemPrompt}` },
-          { text: `USER:\n${userPrompt}` }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.95,
-      maxOutputTokens: 1024
-    }
-  };
-
-  const response = await fetch(`${GEMINI_API_URL}?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-
-  if (!response.ok) {
-    const bodyText = await response.text();
-    throw new Error(`Gemini error (${response.status}): ${bodyText}`);
-  }
-
-  const data = await response.json();
-  const textPart =
-    data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") ?? "";
+  const responseText = await session.prompt(userPrompt);
 
   let parsed;
   try {
-    parsed = JSON.parse(textPart);
+    parsed = JSON.parse(responseText);
   } catch (err) {
-    throw new Error("Gemini returned non-JSON response");
+    throw new Error("Local AI returned non-JSON response");
   }
 
   if (!parsed || !Array.isArray(parsed.matches)) {
-    throw new Error("Gemini JSON missing matches array");
+    throw new Error("Local AI JSON missing matches array");
   }
 
   return parsed.matches;
+}
+
+async function getLocalModelSession() {
+  if (localModelSession) return localModelSession;
+
+  if (typeof self === "undefined" || !self.ai || !self.ai.languageModel) {
+    throw new Error(
+      "Chrome built-in AI unavailable. Enable chrome://flags/#prompt-api-for-gemini-nano and restart."
+    );
+  }
+
+  const caps = await self.ai.languageModel.capabilities();
+  if (!caps || caps.available !== "readily") {
+    throw new Error(
+      "Chrome built-in AI not ready. Enable chrome://flags/#prompt-api-for-gemini-nano and wait for download."
+    );
+  }
+
+  localModelSession = await self.ai.languageModel.create({
+    systemPrompt: SYSTEM_PROMPT
+  });
+
+  return localModelSession;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
