@@ -12,7 +12,7 @@
   let tooltipEl = null;
   let tooltipState = { element: null, match: null };
   let refreshScheduled = false;
-  const highlightRangeStore = new Map(); // element -> Range[]
+  const highlightRangeStore = new Map(); // element -> { range, match }[]
 
   injectStyles();
   setupTooltip();
@@ -272,6 +272,7 @@
   }
 
   async function runCheck(el) {
+    if (!chrome.runtime?.id) return;
     const state = stateByElement.get(el);
     if (!state) return;
     if (!enabledForPage) {
@@ -307,6 +308,9 @@
         clearHighlights(el, state);
       }
     } catch (err) {
+      if (String(err).includes("Extension context invalidated")) {
+        return;
+      }
       console.warn("[GrammarFree] failed to reach LanguageTool", err);
       clearHighlights(el, state);
     }
@@ -426,14 +430,13 @@
     if (sorted.length === 0) return;
 
     if (supportsHighlightApi) {
-      const ranges = buildRangesFromMatches(el, sorted);
-      highlightRangeStore.set(el, ranges);
+      const rangeEntries = buildRangeEntries(el, sorted);
+      highlightRangeStore.set(el, rangeEntries);
       rebuildHighlights();
 
       const hitboxFragment = document.createDocumentFragment();
       const hitboxes = [];
-      ranges.forEach((range, idx) => {
-        const match = sorted[idx];
+      rangeEntries.forEach(({ range, match }) => {
         if (!match) return;
         for (const rect of range.getClientRects()) {
           if (!rect.width || !rect.height) continue;
@@ -526,8 +529,8 @@
     state.inlineSpans = spans;
   }
 
-  function buildRangesFromMatches(el, matches) {
-    const ranges = [];
+  function buildRangeEntries(el, matches) {
+    const entries = [];
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
     let node = walker.nextNode();
     let cursor = 0;
@@ -558,7 +561,7 @@
         const range = document.createRange();
         range.setStart(node, start - nodeStart);
         range.setEnd(node, end - nodeStart);
-        ranges.push(range);
+        entries.push({ range, match });
       }
 
       if (matchEnd <= nodeEnd) {
@@ -569,7 +572,7 @@
       node = walker.nextNode();
     }
 
-    return ranges;
+    return entries;
   }
 
   function buildSignature(text, matches) {
@@ -592,8 +595,8 @@
   function rebuildHighlights() {
     if (!supportsHighlightApi) return;
     const allRanges = [];
-    for (const ranges of highlightRangeStore.values()) {
-      allRanges.push(...ranges);
+    for (const entries of highlightRangeStore.values()) {
+      for (const entry of entries) allRanges.push(entry.range);
     }
     if (allRanges.length === 0) {
       CSS.highlights.delete(HIGHLIGHT_NAME);
