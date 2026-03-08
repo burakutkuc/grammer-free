@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>GrammarFree</title>
+  </head>
+  <body>
+    <main class="gf-popup">
+      <header class="gf-header">
+        <div>
+          <p class="gf-eyebrow">GrammarFree</p>
+          <h1>Free Grammar Checker</h1>
+        </div>
+        <span class="gf-pill" id="status-pill">Loading…</span>
+      </header>
+
+      <section class="gf-card">
+        <div>
+          <h2>Global</h2>
+          <p class="gf-sub">Toggle GrammarFree for every site.</p>
+        </div>
+        <label class="gf-switch">
+          <input type="checkbox" id="toggle-global" />
+          <span class="gf-slider"></span>
+        </label>
+      </section>
+
+      <section class="gf-card">
+        <div>
+          <h2>This Site</h2>
+          <p class="gf-sub" id="site-label">Loading current site…</p>
+        </div>
+        <label class="gf-switch">
+          <input type="checkbox" id="toggle-site" />
+          <span class="gf-slider"></span>
+        </label>
+      </section>
+
+      <p class="gf-footnote">
+        Powered by LanguageTool. We never store or log your text.
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
