@@ -1,4 +1,6 @@
-const API_URL = "https://api.languagetool.org/v2/check";
+const GEMINI_API_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"; // TODO: paste your key here
 const DEFAULT_SETTINGS = {
   enabled: true,
   disabledHosts: []
@@ -66,30 +68,69 @@ async function handleSetGlobalEnabled(enabled) {
 }
 
 async function handleCheckText(text, language = "en-US") {
-  const params = new URLSearchParams();
-  params.set("text", text);
-  params.set("language", language);
-  params.set("level", "picky");
-  params.set("enablePickyRules", "true");
-  params.set(
-    "enabledCategories",
-    "TYPOS,GRAMMAR,STYLE,REDUNDANCY,SEMANTICS,TYPOGRAPHY,PHRASING"
-  );
-  params.set("enabledOnly", "false");
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === "YOUR_GEMINI_API_KEY") {
+    throw new Error("Gemini API key missing. Set GEMINI_API_KEY in background.js");
+  }
 
-  const response = await fetch(API_URL, {
+  const systemPrompt =
+    "You are an expert technical English copyeditor for a software engineer. Fix grammar, typos, awkward phrasing, redundancy, and ensure natural, professional English flow. You must calculate exact character offsets for the text that needs changing. Return ONLY valid JSON with matches array.";
+
+  const userPrompt = [
+    "Return ONLY JSON exactly in this shape:",
+    '{ "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] }',
+    "Rules:",
+    "- offsets are zero-based within the provided text.",
+    "- length is the exact span to replace.",
+    "- message is a concise explanation.",
+    "- replacements[0].value is the suggested fix.",
+    "Text to analyze:",
+    text
+  ].join("\n");
+
+  const body = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: `SYSTEM:\n${systemPrompt}` },
+          { text: `USER:\n${userPrompt}` }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.95,
+      maxOutputTokens: 1024
+    }
+  };
+
+  const response = await fetch(`${GEMINI_API_URL}?key=${encodeURIComponent(GEMINI_API_KEY)}`, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString()
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`LanguageTool error (${response.status}): ${body}`);
+    const bodyText = await response.text();
+    throw new Error(`Gemini error (${response.status}): ${bodyText}`);
   }
 
   const data = await response.json();
-  return data.matches || [];
+  const textPart =
+    data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") ?? "";
+
+  let parsed;
+  try {
+    parsed = JSON.parse(textPart);
+  } catch (err) {
+    throw new Error("Gemini returned non-JSON response");
+  }
+
+  if (!parsed || !Array.isArray(parsed.matches)) {
+    throw new Error("Gemini JSON missing matches array");
+  }
+
+  return parsed.matches;
 }
 
 chrome.runtime.onInstalled.addListener(() => {

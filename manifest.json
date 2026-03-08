@@ -11,6 +11,7 @@
   "host_permissions": [
     "https://api.languagetool.org/*",
     "https://api.languagetoolplus.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "<all_urls>"
   ],
   "background": {
