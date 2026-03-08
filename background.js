@@ -69,38 +69,51 @@ async function handleSetGlobalEnabled(enabled) {
 }
 
 async function handleCheckText(text, language = "en-US") {
-  const session = await getLocalModelSession();
-
-  const userPrompt = [
-    "Return ONLY JSON exactly in this shape:",
-    '{ "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] }',
-    "Rules:",
-    "- offsets are zero-based within the provided text.",
-    "- length is the exact span to replace.",
-    "- message is a concise explanation of the issue.",
-    "- replacements[0].value is the suggested fix.",
-    "Text to analyze:",
-    text
-  ].join("\n");
-
-  const responseText = await session.prompt(userPrompt);
-
-  let parsed;
   try {
-    parsed = JSON.parse(responseText);
+    const session = await getLocalModelSession();
+
+    const userPrompt = [
+      "Return ONLY JSON exactly in this shape:",
+      '{ "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] }',
+      "Rules:",
+      "- offsets are zero-based within the provided text.",
+      "- length is the exact span to replace.",
+      "- message is a concise explanation of the issue.",
+      "- replacements[0].value is the suggested fix.",
+      "Text to analyze:",
+      text
+    ].join("\n");
+
+    const responseText = await session.prompt(userPrompt);
+    const cleaned = sanitizeJsonString(responseText);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (err) {
+      console.error("[GrammarFree] JSON parse failed. Raw response:", responseText);
+      throw err;
+    }
+
+    if (!parsed || !Array.isArray(parsed.matches)) {
+      throw new Error("Local AI JSON missing matches array");
+    }
+
+    return parsed.matches;
   } catch (err) {
-    throw new Error("Local AI returned non-JSON response");
+    console.error("[GrammarFree] local AI call failed", err);
+    return [];
   }
-
-  if (!parsed || !Array.isArray(parsed.matches)) {
-    throw new Error("Local AI JSON missing matches array");
-  }
-
-  return parsed.matches;
 }
 
 async function getLocalModelSession() {
   if (localModelSession) return localModelSession;
+
+  console.log("[GrammarFree] ai object present:", typeof self !== "undefined", !!self?.ai);
+  console.log(
+    "[GrammarFree] ai.languageModel present:",
+    typeof self !== "undefined" && !!self?.ai?.languageModel
+  );
 
   if (typeof self === "undefined" || !self.ai || !self.ai.languageModel) {
     throw new Error(
@@ -120,6 +133,15 @@ async function getLocalModelSession() {
   });
 
   return localModelSession;
+}
+
+function sanitizeJsonString(raw) {
+  if (!raw || typeof raw !== "string") return raw;
+  // strip markdown code fences like ```json ... ```
+  const fenceMatch = raw.match(/```(?:json)?\\s*([\\s\\S]*?)\\s*```/i);
+  const candidate = fenceMatch ? fenceMatch[1] : raw;
+  // remove leading/trailing markers like "json\n"
+  return candidate.trim();
 }
 
 chrome.runtime.onInstalled.addListener(() => {
