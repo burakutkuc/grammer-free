@@ -380,7 +380,11 @@
     clearHighlights(el, state);
     hideTooltip();
 
-    if (!matches || matches.length === 0) return;
+    if (!matches || matches.length === 0) {
+      // explicitly clear any prior artifacts when no matches remain
+      clearHighlights(el, state);
+      return;
+    }
     if (!document.contains(el)) return;
 
     if (state.mode === "rich") {
