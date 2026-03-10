@@ -1,5 +1,5 @@
 (() => {
-  const DEBOUNCE_MS = 350;
+  const DEBOUNCE_MS = 2000;
   const CLASS_PREFIX = "grammarfree";
   const MAX_MATCHES_RENDERED = 64; // basic guard
   const HIGHLIGHT_NAME = "grammarfree-highlight";
@@ -7,6 +7,7 @@
 
   let settings = { enabled: true, disabledHosts: [] };
   let enabledForPage = true;
+  let isChecking = false;
 
   const stateByElement = new Map();
   let tooltipEl = null;
@@ -293,6 +294,9 @@
       return;
     }
 
+    if (isChecking) return;
+    isChecking = true;
+
     try {
       const response = await chrome.runtime.sendMessage({
         type: "checkText",
@@ -313,6 +317,8 @@
       }
       console.warn("[GrammarFree] failed to reach Ollama", err);
       clearHighlights(el, state);
+    } finally {
+      isChecking = false;
     }
   }
 

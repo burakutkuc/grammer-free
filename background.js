@@ -72,6 +72,9 @@ async function handleSetGlobalEnabled(enabled) {
 }
 
 async function handleCheckText(text, language = "en-US") {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
   const payload = {
     model: OLLAMA_MODEL,
     stream: false,
@@ -94,7 +97,8 @@ async function handleCheckText(text, language = "en-US") {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
 
     if (!response.ok) {
@@ -121,8 +125,14 @@ async function handleCheckText(text, language = "en-US") {
       return { matches: [] };
     }
   } catch (err) {
-    console.error("[GrammarFree] Ollama request failed", err);
+    if (err.name === "AbortError") {
+      console.warn("[GrammarFree] Ollama request timed out after 15s");
+    } else {
+      console.error("[GrammarFree] Ollama request failed", err);
+    }
     return { matches: [] };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
