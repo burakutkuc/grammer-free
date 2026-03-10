@@ -1,5 +1,5 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
-const OLLAMA_MODEL = "llama3.2";
+const OLLAMA_MODEL = "qwen2.5:3b";
 const SYSTEM_PROMPT =
   'You are a strict proofreader. Return ONLY valid JSON in this exact structure: { "errors": [ { "exact_typo": "the exact wrong word", "fix": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "errors": [ { "exact_typo": "have", "fix": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: "exact_typo" MUST be the exact, literal misspelled word copied directly from the user\'s text. NEVER auto-correct the spelling inside "exact_typo". The "exact_typo" MUST be 1 to 4 words maximum. NEVER return the entire sentence as exact_typo. Do not include markdown, code fences, or any text outside the JSON object.';
 
