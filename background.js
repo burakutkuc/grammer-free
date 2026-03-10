@@ -1,7 +1,8 @@
-// Built-in Chrome AI (Gemini Nano via Prompt API)
-let localModelSession = null;
+const OLLAMA_URL = "http://localhost:11434/api/chat";
+const OLLAMA_MODEL = "deepseek-r1:8b";
 const SYSTEM_PROMPT =
-  "You are an expert technical English copyeditor for a software engineer. Fix grammar, awkward phrasing, redundancy, and ensure natural, professional English flow. You must calculate exact character offsets for the text that needs changing. Return ONLY valid JSON with matches array.";
+  'You are an expert technical English copyeditor. Analyze the text for grammar, awkward phrasing, and flow. Return ONLY valid JSON in this exact structure: { "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] }';
+
 const DEFAULT_SETTINGS = {
   enabled: true,
   disabledHosts: []
@@ -27,10 +28,12 @@ async function broadcastSettings(settings) {
   const tabs = await chrome.tabs.query({});
   for (const tab of tabs) {
     if (tab.id) {
-      chrome.tabs.sendMessage(tab.id, {
-        type: "settingsUpdated",
-        settings
-      }).catch(() => {});
+      chrome.tabs
+        .sendMessage(tab.id, {
+          type: "settingsUpdated",
+          settings
+        })
+        .catch(() => {});
     }
   }
 }
@@ -69,79 +72,87 @@ async function handleSetGlobalEnabled(enabled) {
 }
 
 async function handleCheckText(text, language = "en-US") {
+  const payload = {
+    model: OLLAMA_MODEL,
+    stream: false,
+    format: "json",
+    messages: [
+      {
+        role: "system",
+        content: SYSTEM_PROMPT
+      },
+      {
+        role: "user",
+        content: text || ""
+      }
+    ]
+  };
+
   try {
-    const session = await getLocalModelSession();
+    const response = await fetch(OLLAMA_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
 
-    const userPrompt = [
-      "Return ONLY JSON exactly in this shape:",
-      '{ "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] }',
-      "Rules:",
-      "- offsets are zero-based within the provided text.",
-      "- length is the exact span to replace.",
-      "- message is a concise explanation of the issue.",
-      "- replacements[0].value is the suggested fix.",
-      "Text to analyze:",
-      text
-    ].join("\n");
+    if (!response.ok) {
+      console.error(
+        `[GrammarFree] Ollama responded with ${response.status} ${response.statusText}`
+      );
+      return { matches: [] };
+    }
 
-    const responseText = await session.prompt(userPrompt);
-    const cleaned = sanitizeJsonString(responseText);
+    const data = await response.json();
+    const rawContent = data?.message?.content;
 
-    let parsed;
     try {
-      parsed = JSON.parse(cleaned);
-    } catch (err) {
-      console.error("[GrammarFree] JSON parse failed. Raw response:", responseText);
-      throw err;
+      const parsed = parseOllamaContent(rawContent);
+      if (parsed && Array.isArray(parsed.matches)) {
+        return { matches: parsed.matches };
+      }
+      console.error("[GrammarFree] Ollama JSON missing matches array", parsed);
+      return { matches: [] };
+    } catch (parseErr) {
+      console.error(
+        "[GrammarFree] parse error for Ollama response",
+        parseErr,
+        "raw content:",
+        rawContent
+      );
+      return { matches: [] };
     }
-
-    if (!parsed || !Array.isArray(parsed.matches)) {
-      throw new Error("Local AI JSON missing matches array");
-    }
-
-    return parsed.matches;
   } catch (err) {
-    console.error("[GrammarFree] local AI call failed", err);
-    return [];
+    console.error("[GrammarFree] Ollama request failed", err);
+    return { matches: [] };
   }
 }
 
-async function getLocalModelSession() {
-  if (localModelSession) return localModelSession;
-
-  console.log("[GrammarFree] ai object present:", typeof self !== "undefined", !!self?.ai);
-  console.log(
-    "[GrammarFree] ai.languageModel present:",
-    typeof self !== "undefined" && !!self?.ai?.languageModel
-  );
-
-  if (typeof self === "undefined" || !self.ai || !self.ai.languageModel) {
-    throw new Error(
-      "Chrome built-in AI unavailable. Enable chrome://flags/#prompt-api-for-gemini-nano and restart."
-    );
+function parseOllamaContent(content) {
+  if (content === undefined || content === null) {
+    throw new Error("Empty Ollama content");
   }
 
-  const caps = await self.ai.languageModel.capabilities();
-  if (!caps || caps.available !== "readily") {
-    throw new Error(
-      "Chrome built-in AI not ready. Enable chrome://flags/#prompt-api-for-gemini-nano and wait for download."
-    );
+  if (typeof content === "object") {
+    return content;
   }
 
-  localModelSession = await self.ai.languageModel.create({
-    systemPrompt: SYSTEM_PROMPT
-  });
+  if (typeof content !== "string") {
+    throw new Error("Unexpected Ollama content type");
+  }
 
-  return localModelSession;
-}
+  const cleaned = content.replace(/<think>[\\s\\S]*?<\\/think>/gi, "").trim();
 
-function sanitizeJsonString(raw) {
-  if (!raw || typeof raw !== "string") return raw;
-  // strip markdown code fences like ```json ... ```
-  const fenceMatch = raw.match(/```(?:json)?\\s*([\\s\\S]*?)\\s*```/i);
-  const candidate = fenceMatch ? fenceMatch[1] : raw;
-  // remove leading/trailing markers like "json\n"
-  return candidate.trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    throw err;
+  }
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -169,12 +180,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       }
       case "checkText": {
-        try {
-          const matches = await handleCheckText(message.text || "", message.language);
-          sendResponse({ matches });
-        } catch (err) {
-          sendResponse({ error: err.message || String(err) });
-        }
+        const result = await handleCheckText(message.text || "", message.language);
+        sendResponse(result);
         break;
       }
       default:
