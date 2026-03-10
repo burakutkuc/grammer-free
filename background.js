@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "llama3.2";
 const SYSTEM_PROMPT =
-  'You are an expert technical English copyeditor. Return ONLY valid JSON in this exact structure: { "corrections": [ { "bad_text": "the exact wrong words", "good_text": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "corrections": [ { "bad_text": "have", "good_text": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: The "bad_text" MUST be 1 to 4 words maximum. NEVER return the entire sentence as bad_text. Isolate ONLY the exact wrong words. Do not include markdown, code fences, or any text outside the JSON object.';
+  'You are an expert technical English copyeditor. Return ONLY valid JSON in this exact structure: { "corrections": [ { "bad_text": "the exact wrong words", "good_text": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "corrections": [ { "bad_text": "have", "good_text": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: The "bad_text" MUST be 1 to 4 words maximum. NEVER return the entire sentence as bad_text. Isolate ONLY the exact wrong words. CRITICAL RULE: The "bad_text" value MUST be copied EXACTLY verbatim from the original input text (including misspellings). Do NOT auto-correct spelling inside "bad_text". Do not include markdown, code fences, or any text outside the JSON object.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -186,7 +186,11 @@ function buildMatchesFromCorrections(originalText, parsed) {
     }
 
     const startIndex = originalText.indexOf(bad);
-    if (startIndex === -1) continue;
+    console.log("[DEBUG] Mapping -> text:", bad, "| index:", startIndex);
+    if (startIndex === -1) {
+      console.warn("[WARN] Could not find bad_text in original text verbatim!");
+      continue;
+    }
     const length = bad.length;
 
     matches.push({
