@@ -142,17 +142,39 @@ function parseOllamaContent(content) {
     throw new Error("Unexpected Ollama content type");
   }
 
-  const cleaned = content.replace(/<think>[\\s\\S]*?<\\/think>/gi, "").trim();
+  // Remove any <think>...</think> traces without regex to avoid syntax issues.
+  let cleaned = stripThinkBlocks(content);
+
+  // Trim code fences that the model may add.
+  cleaned = cleaned
+    .replace("```json", "")
+    .replace("```", "")
+    .trim();
 
   try {
     return JSON.parse(cleaned);
   } catch (err) {
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    // Best-effort: try parsing the substring between the first { and last }.
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const candidate = cleaned.slice(firstBrace, lastBrace + 1);
+      return JSON.parse(candidate);
     }
     throw err;
   }
+}
+
+function stripThinkBlocks(text) {
+  let output = text;
+  let start = output.indexOf("<think>");
+  while (start !== -1) {
+    const end = output.indexOf("</think>", start + 7);
+    if (end === -1) break;
+    output = output.slice(0, start) + output.slice(end + 8);
+    start = output.indexOf("<think>");
+  }
+  return output;
 }
 
 chrome.runtime.onInstalled.addListener(() => {
