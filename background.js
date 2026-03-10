@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "llama3.2";
 const SYSTEM_PROMPT =
-  'You are an expert technical English copyeditor. Return ONLY valid JSON in this exact structure: { "corrections": [ { "bad_text": "the exact wrong words", "good_text": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "corrections": [ { "bad_text": "have", "good_text": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: The "bad_text" MUST be 1 to 4 words maximum. NEVER return the entire sentence as bad_text. Isolate ONLY the exact wrong words. CRITICAL RULE: The "bad_text" value MUST be copied EXACTLY verbatim from the original input text (including misspellings). Do NOT auto-correct spelling inside "bad_text". Do not include markdown, code fences, or any text outside the JSON object.';
+  'You are a strict proofreader. Return ONLY valid JSON in this exact structure: { "errors": [ { "exact_typo": "the exact wrong word", "fix": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "errors": [ { "exact_typo": "have", "fix": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: "exact_typo" MUST be the exact, literal misspelled word copied directly from the user\'s text. NEVER auto-correct the spelling inside "exact_typo". The "exact_typo" MUST be 1 to 4 words maximum. NEVER return the entire sentence as exact_typo. Do not include markdown, code fences, or any text outside the JSON object.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -116,8 +116,8 @@ async function handleCheckText(text, language = "en-US") {
 
     try {
       const parsed = parseOllamaContent(rawContent);
-      console.log("[DEBUG] Ollama Parsed JSON:", parsed);
-      const matches = buildMatchesFromCorrections(text || "", parsed);
+      console.log("[DEBUG] Ollama Parsed JSON (errors):", parsed);
+      const matches = buildMatchesFromErrors(text || "", parsed);
       return { matches };
     } catch (parseErr) {
       console.error(
@@ -168,14 +168,14 @@ function parseOllamaContent(content) {
   return JSON.parse(jsonStr);
 }
 
-function buildMatchesFromCorrections(originalText, parsed) {
-  if (!parsed || !Array.isArray(parsed.corrections)) return [];
+function buildMatchesFromErrors(originalText, parsed) {
+  if (!parsed || !Array.isArray(parsed.errors)) return [];
 
   const matches = [];
 
-  for (const correction of parsed.corrections) {
-    const bad = correction?.bad_text;
-    const good = correction?.good_text;
+  for (const correction of parsed.errors) {
+    const bad = correction?.exact_typo;
+    const good = correction?.fix;
     const reason = correction?.reason || "Issue detected";
 
     if (!bad || !good || typeof bad !== "string" || typeof good !== "string") {
@@ -185,10 +185,12 @@ function buildMatchesFromCorrections(originalText, parsed) {
       continue;
     }
 
-    const startIndex = originalText.indexOf(bad);
-    console.log("[DEBUG] Mapping -> text:", bad, "| index:", startIndex);
+    const lowerText = originalText.toLowerCase();
+    const lowerTypo = bad.toLowerCase();
+    let startIndex = lowerText.indexOf(lowerTypo);
+    console.log("[DEBUG] Searching for:", bad, "-> Index:", startIndex);
     if (startIndex === -1) {
-      console.warn("[WARN] Could not find bad_text in original text verbatim!");
+      console.warn("[WARN] Could not find exact_typo in original text verbatim!");
       continue;
     }
     const length = bad.length;
