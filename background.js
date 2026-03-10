@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "deepseek-r1:8b";
 const SYSTEM_PROMPT =
-  'You are an expert technical English copyeditor. Return ONLY valid JSON in this exact structure: { "corrections": [ { "bad_text": "the exact wrong words", "good_text": "the replacement", "reason": "explanation" } ] }. The bad_text MUST be only the specific short phrase that is wrong (e.g., "have forgot" or "for check there is"), not the surrounding sentence or clause. Do not include markdown, code fences, or any text outside the JSON object.';
+  'You are an expert technical English copyeditor. Return ONLY valid JSON in this exact structure: { "corrections": [ { "bad_text": "the exact wrong words", "good_text": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "corrections": [ { "bad_text": "have", "good_text": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: The "bad_text" MUST be 1 to 4 words maximum. NEVER return the entire sentence as bad_text. Isolate ONLY the exact wrong words. Do not include markdown, code fences, or any text outside the JSON object.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -113,6 +113,7 @@ async function handleCheckText(text, language = "en-US") {
 
     try {
       const parsed = parseOllamaContent(rawContent);
+      console.log("[DEBUG] Ollama Parsed JSON:", parsed);
       const matches = buildMatchesFromCorrections(text || "", parsed);
       return { matches };
     } catch (parseErr) {
@@ -168,7 +169,6 @@ function buildMatchesFromCorrections(originalText, parsed) {
   if (!parsed || !Array.isArray(parsed.corrections)) return [];
 
   const matches = [];
-  let searchStart = 0;
 
   for (const correction of parsed.corrections) {
     const bad = correction?.bad_text;
@@ -179,17 +179,13 @@ function buildMatchesFromCorrections(originalText, parsed) {
       continue;
     }
 
-    let idx = originalText.indexOf(bad, searchStart);
-    if (idx === -1) {
-      idx = originalText.indexOf(bad);
-    }
-    if (idx === -1) continue;
-
-    searchStart = idx + bad.length;
+    const startIndex = originalText.indexOf(bad);
+    if (startIndex === -1) continue;
+    const length = bad.length;
 
     matches.push({
-      offset: idx,
-      length: bad.length,
+      offset: startIndex,
+      length,
       message: reason,
       replacements: [{ value: good }]
     });
