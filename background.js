@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "deepseek-r1:8b";
 const SYSTEM_PROMPT =
-  'You are an expert technical English copyeditor. You MUST provide the exact offset and length of ONLY the specific incorrect words or awkward phrases. DO NOT return the offset for the entire sentence. If only 3 words are wrong, the length must exactly match those 3 words. Return ONLY valid JSON in this structure: { "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] } without any markdown.';
+  'You are an expert technical English copyeditor. Return ONLY valid JSON in this exact structure: { "corrections": [ { "bad_text": "the exact wrong words", "good_text": "the replacement", "reason": "explanation" } ] }. The bad_text MUST be only the specific short phrase that is wrong (e.g., "have forgot" or "for check there is"), not the surrounding sentence or clause. Do not include markdown, code fences, or any text outside the JSON object.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -109,11 +109,8 @@ async function handleCheckText(text, language = "en-US") {
 
     try {
       const parsed = parseOllamaContent(rawContent);
-      if (parsed && Array.isArray(parsed.matches)) {
-        return { matches: parsed.matches };
-      }
-      console.error("[GrammarFree] Ollama JSON missing matches array", parsed);
-      return { matches: [] };
+      const matches = buildMatchesFromCorrections(text || "", parsed);
+      return { matches };
     } catch (parseErr) {
       console.error(
         "[GrammarFree] parse error for Ollama response",
@@ -155,6 +152,40 @@ function parseOllamaContent(content) {
   }
 
   return JSON.parse(jsonStr);
+}
+
+function buildMatchesFromCorrections(originalText, parsed) {
+  if (!parsed || !Array.isArray(parsed.corrections)) return [];
+
+  const matches = [];
+  let searchStart = 0;
+
+  for (const correction of parsed.corrections) {
+    const bad = correction?.bad_text;
+    const good = correction?.good_text;
+    const reason = correction?.reason || "Issue detected";
+
+    if (!bad || !good || typeof bad !== "string" || typeof good !== "string") {
+      continue;
+    }
+
+    let idx = originalText.indexOf(bad, searchStart);
+    if (idx === -1) {
+      idx = originalText.indexOf(bad);
+    }
+    if (idx === -1) continue;
+
+    searchStart = idx + bad.length;
+
+    matches.push({
+      offset: idx,
+      length: bad.length,
+      message: reason,
+      replacements: [{ value: good }]
+    });
+  }
+
+  return matches;
 }
 
 function stripThinkBlocks(text) {
