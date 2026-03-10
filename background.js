@@ -205,38 +205,46 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  (async () => {
-    switch (message.type) {
-      case "getSettings": {
+  if (message.type === "checkText") {
+    (async () => {
+      try {
+        const result = await handleCheckText(message.text || "", message.language);
+        sendResponse(result);
+      } catch (error) {
+        console.error("Background error:", error);
+        sendResponse({ matches: [] });
+      }
+    })();
+    return true; // keep channel open for async response
+  }
+
+  switch (message.type) {
+    case "getSettings": {
+      (async () => {
         const settings = await readSettings();
         sendResponse({ settings });
-        break;
-      }
-      case "setGlobalEnabled": {
+      })();
+      return true;
+    }
+    case "setGlobalEnabled": {
+      (async () => {
         const updated = await handleSetGlobalEnabled(Boolean(message.enabled));
         sendResponse({ settings: updated });
-        break;
-      }
-      case "toggleHost": {
+      })();
+      return true;
+    }
+    case "toggleHost": {
+      (async () => {
         const host = message.host;
         const enable = Boolean(message.enable);
         const updated = await handleToggleHost(host, enable);
         sendResponse({ settings: updated });
-        break;
-      }
-      case "checkText": {
-        try {
-          const result = await handleCheckText(message.text || "", message.language);
-          sendResponse(result);
-        } catch (err) {
-          console.error("[GrammarFree] Ollama handler failed", err);
-          sendResponse({ matches: [] });
-        }
-        break;
-      }
-      default:
-        sendResponse({});
+      })();
+      return true;
     }
-  })();
-  return true;
+    default: {
+      sendResponse({});
+      return false;
+    }
+  }
 });
