@@ -315,6 +315,9 @@
       if (String(err).includes("Extension context invalidated")) {
         return;
       }
+      if (String(err).includes("message channel closed")) {
+        return;
+      }
       console.warn("[GrammarFree] failed to reach Ollama", err);
       clearHighlights(el, state);
     } finally {

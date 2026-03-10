@@ -79,6 +79,9 @@ async function handleCheckText(text, language = "en-US") {
     model: OLLAMA_MODEL,
     stream: false,
     format: "json",
+    options: {
+      temperature: 0.0
+    },
     messages: [
       {
         role: "system",
@@ -178,6 +181,9 @@ function buildMatchesFromCorrections(originalText, parsed) {
     if (!bad || !good || typeof bad !== "string" || typeof good !== "string") {
       continue;
     }
+    if (bad.length > 40) {
+      continue;
+    }
 
     const startIndex = originalText.indexOf(bad);
     if (startIndex === -1) continue;
@@ -211,14 +217,22 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const safeSendResponse = (data) => {
+    try {
+      sendResponse(data);
+    } catch (e) {
+      // message channel may already be closed
+    }
+  };
+
   if (message.type === "checkText") {
     (async () => {
       try {
         const result = await handleCheckText(message.text || "", message.language);
-        sendResponse(result);
+        safeSendResponse(result);
       } catch (error) {
         console.error("Background error:", error);
-        sendResponse({ matches: [] });
+        safeSendResponse({ matches: [] });
       }
     })();
     return true; // keep channel open for async response
@@ -228,14 +242,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "getSettings": {
       (async () => {
         const settings = await readSettings();
-        sendResponse({ settings });
+        safeSendResponse({ settings });
       })();
       return true;
     }
     case "setGlobalEnabled": {
       (async () => {
         const updated = await handleSetGlobalEnabled(Boolean(message.enabled));
-        sendResponse({ settings: updated });
+        safeSendResponse({ settings: updated });
       })();
       return true;
     }
@@ -244,12 +258,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const host = message.host;
         const enable = Boolean(message.enable);
         const updated = await handleToggleHost(host, enable);
-        sendResponse({ settings: updated });
+        safeSendResponse({ settings: updated });
       })();
       return true;
     }
     default: {
-      sendResponse({});
+      safeSendResponse({});
       return false;
     }
   }
