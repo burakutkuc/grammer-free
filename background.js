@@ -225,8 +225,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       }
       case "checkText": {
-        const result = await handleCheckText(message.text || "", message.language);
-        sendResponse(result);
+        try {
+          const result = await handleCheckText(message.text || "", message.language);
+          sendResponse(result);
+        } catch (err) {
+          console.error("[GrammarFree] Ollama handler failed", err);
+          sendResponse({ matches: [] });
+        }
         break;
       }
       default:

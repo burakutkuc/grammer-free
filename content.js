@@ -311,7 +311,7 @@
       if (String(err).includes("Extension context invalidated")) {
         return;
       }
-      console.warn("[GrammarFree] failed to reach LanguageTool", err);
+      console.warn("[GrammarFree] failed to reach Ollama", err);
       clearHighlights(el, state);
     }
   }
