@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "deepseek-r1:8b";
 const SYSTEM_PROMPT =
-  'You are an expert technical English copyeditor. Analyze the text for grammar, awkward phrasing, and flow. Return ONLY valid JSON in this exact structure: { "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] }';
+  'You are an expert technical English copyeditor. You MUST provide the exact offset and length of ONLY the specific incorrect words or awkward phrases. DO NOT return the offset for the entire sentence. If only 3 words are wrong, the length must exactly match those 3 words. Return ONLY valid JSON in this structure: { "matches": [ { "offset": number, "length": number, "message": string, "replacements": [ { "value": string } ] } ] } without any markdown.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -142,27 +142,19 @@ function parseOllamaContent(content) {
     throw new Error("Unexpected Ollama content type");
   }
 
-  // Remove any <think>...</think> traces without regex to avoid syntax issues.
-  let cleaned = stripThinkBlocks(content);
-
-  // Trim code fences that the model may add.
-  cleaned = cleaned
+  // Remove any <think>...</think> traces without complex regex and trim code fences.
+  const cleaned = stripThinkBlocks(content)
     .replace("```json", "")
     .replace("```", "")
     .trim();
 
-  try {
-    return JSON.parse(cleaned);
-  } catch (err) {
-    // Best-effort: try parsing the substring between the first { and last }.
-    const firstBrace = cleaned.indexOf("{");
-    const lastBrace = cleaned.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      const candidate = cleaned.slice(firstBrace, lastBrace + 1);
-      return JSON.parse(candidate);
-    }
-    throw err;
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  const jsonStr = jsonMatch ? jsonMatch[0] : null;
+  if (!jsonStr) {
+    throw new Error("No JSON object found in Ollama response");
   }
+
+  return JSON.parse(jsonStr);
 }
 
 function stripThinkBlocks(text) {
