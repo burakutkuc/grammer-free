@@ -25,7 +25,7 @@ ollama run qwen2.5:3b
 
 🚀 Installation
 Clone the repository:
-git clone https://github.com/YOUR_USERNAME/GrammarFree.git
+git clone 
 
 Open your browser and navigate to the Extensions page (chrome://extensions/).
 
