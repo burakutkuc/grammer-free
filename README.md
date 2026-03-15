@@ -17,7 +17,7 @@ Anti-Loop Guardrails: Built-in safeguards to ignore "No-Op" (identical) suggesti
 🛠️ Prerequisites
 Since this extension runs a local AI model, you need to set up the backend first:
 
-Install Ollama: Download and install Ollama from [şüpheli bağlantı kaldırıldı].
+Install Ollama: Download and install Ollama.
 
 Download the AI Model: Open your terminal (or command prompt) and pull the recommended model:
 ollama run qwen2.5:3b
