@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "qwen2.5:3b";
 const SYSTEM_PROMPT =
-  "You are an expert English grammar proofreader. Analyze the text for typos, bad grammar, tense errors, and awkward phrasing. If there are errors, extract the exact short phrase (maximum 5 words) that is incorrect into 'exact_typo'. Provide the correction in 'fix'. Provide a short explanation in 'reason'. If the text is perfectly correct, return { \"errors\": [] }.";
+  'You are an expert English copyeditor. Your goal is to make the text meaningful, natural, and grammatically correct. Fix typos, incorrect verb tenses (e.g., "to finished" -> "to finish"), and awkward phrasing. CRITICAL: If a word is missing to make sense, you MUST add it in your fix (e.g., "do not how" -> "do not know how"). Extract the incorrect phrase (max 6 words) into "exact_typo". Provide the corrected phrase in "fix". Provide a brief explanation in "reason". If perfectly correct, return { "errors": [] }.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
