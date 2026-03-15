@@ -265,6 +265,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               console.warn("[WARN] Skipping invalid LLM output format:", correction);
               continue;
             }
+            if (
+              correction.exact_typo.toLowerCase() === correction.fix.toLowerCase()
+            ) {
+              console.log(
+                "[DEBUG] Skipping identical fix (No-Op):",
+                correction.exact_typo
+              );
+              continue;
+            }
 
             const bad = correction?.exact_typo;
             const good = correction?.fix;
