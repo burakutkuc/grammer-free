@@ -108,7 +108,7 @@ async function handleCheckText(text, language = "en-US") {
       console.error(
         `[GrammarFree] Ollama responded with ${response.status} ${response.statusText}`
       );
-      return [];
+      return { errors: [], rawContent: null };
     }
 
     const data = await response.json();
@@ -119,7 +119,7 @@ async function handleCheckText(text, language = "en-US") {
       const parsed = parseOllamaContent(rawContent);
       console.log("[DEBUG] Ollama Parsed JSON (errors):", parsed);
       const errors = Array.isArray(parsed?.errors) ? parsed.errors : [];
-      return errors;
+      return { errors, rawContent };
     } catch (parseErr) {
       console.error(
         "[GrammarFree] parse error for Ollama response",
@@ -127,7 +127,7 @@ async function handleCheckText(text, language = "en-US") {
         "raw content:",
         rawContent
       );
-      return [];
+      return { errors: [], rawContent };
     }
   } catch (err) {
     if (err.name === "AbortError") {
@@ -135,7 +135,7 @@ async function handleCheckText(text, language = "en-US") {
     } else {
       console.error("[GrammarFree] Ollama request failed", err);
     }
-    return [];
+    return { errors: [], rawContent: null };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -235,10 +235,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "checkText") {
     (async () => {
       const fullText = message.text || "";
-      const sentences =
-        fullText.match(/[^.!?\n]+[.!?\n]+/g) || (fullText ? [fullText] : []);
+      const sentences = fullText.match(/[^.!?\n]+[.!?\n]+/g) || [fullText];
       let allMatches = [];
-      let runningOffset = 0;
 
       if (!fullText.trim()) {
         safeSendResponse({ matches: [] });
@@ -247,9 +245,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       try {
         for (const sentence of sentences) {
-          const errors = await handleCheckText(sentence, message.language);
+          console.log("[DEBUG] Processing chunk:", sentence);
+
+          const { errors, rawContent } = await handleCheckText(
+            sentence,
+            message.language
+          );
+          console.log("[DEBUG] Qwen returned:", rawContent);
+
           if (!Array.isArray(errors)) {
-            runningOffset += sentence.length;
             continue;
           }
 
@@ -265,7 +269,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               continue;
             }
 
-            const startIndex = fullText.indexOf(bad, runningOffset);
+            const startIndex = fullText.indexOf(bad);
+            console.log("[DEBUG] Mapped Index:", startIndex);
             if (startIndex === -1) {
               console.warn("[WARN] Could not locate phrase in full text:", bad);
               continue;
@@ -278,8 +283,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               replacements: [{ value: good }]
             });
           }
-
-          runningOffset += sentence.length;
         }
 
         safeSendResponse({ matches: allMatches });
