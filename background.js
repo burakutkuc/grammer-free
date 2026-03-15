@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "qwen2.5:3b";
 const SYSTEM_PROMPT =
-  'You are a strict proofreader. Return ONLY valid JSON in this exact structure: { "errors": [ { "exact_typo": "the exact wrong word", "fix": "the replacement", "reason": "explanation" } ] }. Example Input: "The microcontroller have very limited memory." Example Output: { "errors": [ { "exact_typo": "have", "fix": "has", "reason": "Subject-verb agreement." } ] } STRICT RULE: "exact_typo" MUST be the exact, literal misspelled word copied directly from the user\'s text. NEVER auto-correct the spelling inside "exact_typo". The "exact_typo" MUST be 1 to 4 words maximum. NEVER return the entire sentence as exact_typo. Do not include markdown, code fences, or any text outside the JSON object.';
+  "You are an expert English grammar proofreader. Analyze the text for typos, bad grammar, tense errors, and awkward phrasing. If there are errors, extract the exact short phrase (maximum 5 words) that is incorrect into 'exact_typo'. Provide the correction in 'fix'. Provide a short explanation in 'reason'. If the text is perfectly correct, return { \"errors\": [] }.";
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -113,6 +113,7 @@ async function handleCheckText(text, language = "en-US") {
 
     const data = await response.json();
     const rawContent = data?.message?.content;
+    console.log("[DEBUG] RAW LLM Response:", data.message.content);
 
     try {
       const parsed = parseOllamaContent(rawContent);
@@ -181,7 +182,7 @@ function buildMatchesFromErrors(originalText, parsed) {
     if (!bad || !good || typeof bad !== "string" || typeof good !== "string") {
       continue;
     }
-    if (bad.length > 40) {
+    if (bad.length > 80) {
       continue;
     }
 
