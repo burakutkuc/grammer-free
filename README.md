@@ -53,8 +53,6 @@ Frontend: Vanilla JavaScript, CSS, HTML (Manifest V3 compatible).
 
 Backend: Ollama REST API (http://localhost:11434/api/chat).
 
-Prompt Engineering: Strict JSON schema enforcement and edge-case filtering handled directly in the Service Worker (background.js).
-
 🤝 Contributing
 Contributions, issues, and feature requests are welcome!
 
