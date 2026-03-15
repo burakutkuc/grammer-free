@@ -234,12 +234,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "checkText") {
     (async () => {
+      let matches = [];
       try {
         const result = await handleCheckText(message.text || "", message.language);
-        safeSendResponse(result);
+        matches = Array.isArray(result?.matches) ? result.matches : [];
+        safeSendResponse({ matches });
       } catch (error) {
         console.error("Background error:", error);
-        safeSendResponse({ matches: [] });
+        safeSendResponse({ matches });
       }
     })();
     return true; // keep channel open for async response

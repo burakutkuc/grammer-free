@@ -297,6 +297,11 @@
     if (isChecking) return;
     isChecking = true;
 
+    // Reset UI state before every backend check to avoid stale highlights/tooltips.
+    clearHighlights(el, state);
+    hideTooltip();
+    state.lastMatches = [];
+
     try {
       const response = await chrome.runtime.sendMessage({
         type: "checkText",
