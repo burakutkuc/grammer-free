@@ -1,7 +1,7 @@
 const OLLAMA_URL = "http://localhost:11434/api/chat";
 const OLLAMA_MODEL = "qwen2.5:3b";
 const SYSTEM_PROMPT =
-  'You are an expert English copyeditor. Your goal is to make the text meaningful, natural, and grammatically correct. Fix typos, incorrect verb tenses (e.g., "to finished" -> "to finish"), and awkward phrasing. CRITICAL: If a word is missing to make sense, you MUST add it in your fix (e.g., "do not how" -> "do not know how"). Extract the incorrect phrase (max 6 words) into "exact_typo". Provide the corrected phrase in "fix". Provide a brief explanation in "reason". If perfectly correct, return { "errors": [] }.';
+  'You are an expert English copyeditor. Your goal is to make the text meaningful, natural, and grammatically correct. Fix typos, incorrect verb tenses (e.g., "to finished" -> "to finish"), and awkward phrasing. CRITICAL: If a word is missing to make sense, you MUST add it in your fix (e.g., "do not how" -> "do not know how"). Extract the incorrect phrase (max 6 words) into "exact_typo". Provide the corrected phrase in "fix". Provide a brief explanation in "reason". CRITICAL OUTPUT FORMAT: You MUST return valid JSON exactly matching this schema: { "errors": [ { "exact_typo": "the exact wrong phrase", "fix": "the corrected phrase", "reason": "short explanation" } ] }. NEVER return an array of strings. If there are no errors, return { "errors": [] }.';
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -258,6 +258,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
 
           for (const correction of errors) {
+            if (
+              typeof correction !== "object" ||
+              !correction?.exact_typo ||
+              !correction?.fix
+            ) {
+              console.warn("[WARN] Skipping invalid LLM output format:", correction);
+              continue;
+            }
+
             const bad = correction?.exact_typo;
             const good = correction?.fix;
             const reason = correction?.reason || "Issue detected";
